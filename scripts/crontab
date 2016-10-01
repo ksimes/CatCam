@@ -1,0 +1,1 @@
+*/5 * * * * sudo nohup /home/pi/wifirefresh.sh > /home/pi/wifirefresh.log 2> /home/pi/wifirefresh.err < /dev/null
