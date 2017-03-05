@@ -1,7 +1,7 @@
 # CatCam
 For the Raspberry Pi.
 
-dependances
-===========
+Dependencies
+============
 Needs to have raspistill and raspivid utility packages in default disk image for Raspberry Pi.
 

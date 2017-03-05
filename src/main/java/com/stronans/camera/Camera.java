@@ -1,12 +1,12 @@
 package com.stronans.camera;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Optional;
-import com.google.common.io.BaseEncoding;
-import com.google.common.io.ByteStreams;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.util.Base64;
+import java.util.Optional;
+import java.util.StringJoiner;
 
 /**
  * Composites an image drawn from an external program which dumps the image to the output stream
@@ -14,7 +14,7 @@ import java.io.IOException;
  * Created by S.King on 11/01/2015.
  */
 public class Camera {
-    private static final Logger log = Logger.getLogger(com.stronans.camera.Camera.class);
+    private static final Logger log = LogManager.getLogger(com.stronans.camera.Camera.class);
 
     public static final String STILL_DEFAULTS = " -t 100 -rot 180 "; // Take image after 100 milliseconds and rotate 180 degrees.
     public static final String VIDEO_DEFAULTS = "";         //  -t 10000
@@ -40,13 +40,13 @@ public class Camera {
         log.debug("Start getting Camera Image");
         long start = System.currentTimeMillis();
 
-        Joiner joiner = Joiner.on(" ");
-        String finalSettings = joiner.join(EXTERNAL_STILL_TOOL, settings, FINAL_STILL_SETTINGS);
+        StringJoiner joiner = new StringJoiner(" ");
+        String finalSettings = joiner.add(EXTERNAL_STILL_TOOL).add(settings).add(FINAL_STILL_SETTINGS).toString();
 
         try {
             log.info("Capture image with settings [" + finalSettings + "]");
             Process p = Runtime.getRuntime().exec(finalSettings);
-            image = ByteStreams.toByteArray(p.getInputStream());
+            image = new byte[p.getInputStream().available()];
 
         } catch (Exception e) {
             log.error("During reading input stream, Camera settings [" + finalSettings + "]", e);
@@ -64,21 +64,21 @@ public class Camera {
 
         try {
             byte[] image = getImage(settings);
-            result = BaseEncoding.base64().encode(image);
+            result= Base64.getEncoder().encodeToString(image);
         } catch (Exception exp) {
             log.error("During encoding of image", exp);
             result = null;
         }
 
-        return Optional.fromNullable(result);
+        return Optional.ofNullable(result);
     }
 
     public static boolean getNamedVideo(String name, String settings) {
         boolean result = true;
 
         log.debug("Start getting video Image");
-        Joiner joiner = Joiner.on(" ");
-        String finalSettings = joiner.join(EXTERNAL_VIDEO_TOOL, settings, FINAL_VIDEO_SETTINGS, name);
+        StringJoiner joiner = new StringJoiner(" ");
+        String finalSettings = joiner.add(EXTERNAL_VIDEO_TOOL).add(settings).add(FINAL_VIDEO_SETTINGS).add(name).toString();
 
         try {
             log.info("Capture video image with settings [" + finalSettings + "]");
@@ -101,14 +101,14 @@ public class Camera {
     public static CameraProcess getPausedNamedVideo(String name, String settings) {
         Process process = null;
         log.debug("Start video paused");
-        Joiner joiner = Joiner.on(" ");
+        StringJoiner joiner = new StringJoiner(" ");
 
         // --signal,   -s      Toggle between record and pause according to SIGUSR1
         // Sending a USR1 signal to the raspivid process will toggle between recording and paused.
         // --initial,  -i      Define initial state on startup.
         // Define whether the camera will start paused or will immediately start recording. Options are 'record' or 'pause'.
         // Note that if you are using a simple timeout, and initial is set to 'pause', no output will be recorded.
-        String finalSettings = joiner.join(EXTERNAL_VIDEO_TOOL, "-s -i pause", settings, FINAL_VIDEO_SETTINGS, name);
+        String finalSettings = joiner.add(EXTERNAL_VIDEO_TOOL).add("-s -i pause").add(settings).add(FINAL_VIDEO_SETTINGS).add(name).toString();
 
         try {
             log.info("Capture video image with settings [" + finalSettings + "]");

@@ -1,6 +1,7 @@
 package com.stronans.camera;
 
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -13,16 +14,16 @@ public class CameraProcess {
     /**
      * The <code>Logger</code> to be used.
      */
-    private static final Logger log = Logger.getLogger(CameraProcess.class);
+    private static final Logger log = LogManager.getLogger(CameraProcess.class);
 
-    private enum Status {Active, Inactive}
+    public static enum Status {Recording, Paused}
 
     private final Long pid;
     private volatile Status status;
 
     public CameraProcess(final Process process) {
         this.pid = unixLikeProcessId(process);
-        this.status = Status.Active;
+        this.status = Status.Paused;          // Initial state is paused.
 
         if (pid == null) {
             String err = "Unable to get pid for process: " + process.toString();
@@ -31,32 +32,35 @@ public class CameraProcess {
         }
     }
 
-    public void setActive(boolean state) {
-        boolean execute = false;
+    public Status status() {
+        return status;
+    }
 
-        if (state && (status == Status.Inactive)) {
-            log.info("Camera Activated");
-            status = Status.Active;
-            execute = true;
-        } else if (status == Status.Active) {
-            log.info("Camera Deactivated");
-            status = Status.Inactive;
-            execute = true;
+    private void sendSignal(Status status)
+    {
+        try {
+            Runtime.getRuntime().exec("kill -SIGUSR1 " + pid.toString());
+        } catch (IOException e) {
+            log.error("IOException: ", e);
         }
+    }
 
-        if (execute) {
-            try {
-                Runtime.getRuntime().exec("kill -SIGUSR1 " + pid.toString());
-
-            } catch (IOException e) {
-                log.error("IOException: ", e);
-            }
+    public void setActive(boolean changeState) {
+        if (changeState && (status == Status.Paused)) {
+            log.info("Camera Recording");
+            status = Status.Recording;
+            sendSignal(status);
+        } else if (!changeState && (status == Status.Recording)) {
+            log.info("Camera Paused");
+            status = Status.Paused;
+            sendSignal(status);
         }
     }
 
     public void shutdown() {
         try {
             Runtime.getRuntime().exec("kill " + pid.toString());
+            log.info("Sent TERM kill");
 
         } catch (IOException e) {
             log.error("IOException: ", e);

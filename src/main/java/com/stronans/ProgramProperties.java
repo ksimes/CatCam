@@ -3,7 +3,8 @@
  */
 package com.stronans;
 
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.*;
 import java.util.Iterator;
@@ -22,7 +23,7 @@ public final class ProgramProperties {
     /**
      * The <code>Logger</code> to be used.
      */
-    private static Logger log = Logger.getLogger(ProgramProperties.class);
+    private static Logger log = LogManager.getLogger(ProgramProperties.class);
     private final String fileName;
     private Properties properties = null;
 

@@ -10,20 +10,23 @@ package com.stronans.PIRcatcam;
  * **********************************************************************
  */
 
-import com.google.common.base.Joiner;
 import com.pi4j.io.gpio.*;
 import com.pi4j.io.gpio.event.GpioPinDigitalStateChangeEvent;
 import com.pi4j.io.gpio.event.GpioPinListenerDigital;
-import com.pi4j.wiringpi.Gpio;
 import com.stronans.ProgramProperties;
 import com.stronans.camera.Camera;
 import com.stronans.camera.CameraProcess;
-import org.apache.log4j.Logger;
-import org.apache.log4j.PropertyConfigurator;
+import com.sun.org.apache.xerces.internal.impl.dv.xs.DayDV;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Properties;
+import java.time.DateTimeException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.StringJoiner;
+
+import static java.time.temporal.ChronoUnit.DAYS;
 
 /**
  *
@@ -32,7 +35,7 @@ public class ListenForActivity {
     /**
      * The <code>Logger</code> to be used.
      */
-    private static final Logger log = Logger.getLogger(ListenForActivity.class);
+    private static final Logger log = LogManager.getLogger(ListenForActivity.class);
     //
     private static final String PROGRAM_ROOT = "com.stronans.catcam.";
 
@@ -45,7 +48,7 @@ public class ListenForActivity {
 
     private static final String TIME_SET = "-t ";
 
-    public static final Pin GPIO_MOVEMENT_PIN = RaspiPin.GPIO_06;
+    private static final Pin GPIO_MOVEMENT_PIN = RaspiPin.GPIO_06;
 
     private static final int DEFAULT_CUT_OFF_SECS = 15;
 
@@ -53,123 +56,111 @@ public class ListenForActivity {
     private static int cutOffCounter;
     private static final Object syncVar = new Object();
 
-    /**
-     * Handles the loading of the log4j configuration. properties file must be
-     * on the classpath.
-     *
-     * @throws RuntimeException
-     */
-    private static void initLogging() throws RuntimeException {
+    private static CameraProcess videoCamera;
+
+    private static String getName(String root, String extension, LocalDateTime dateTimeStamp) {
+        DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
+        String result = "";
+
         try {
-            Properties properties = new Properties();
-            properties.load(ListenForActivity.class.getClassLoader().getResourceAsStream("log4j.properties"));
-            PropertyConfigurator.configure(properties);
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to load logging properties for System");
+            result = dateTimeStamp.format(format);
         }
-    }
+        catch (DateTimeException exc) {
+            log.error("%s can't be formatted!%n", dateTimeStamp);
+            throw exc;
+        }
 
-    private static String getName(String root, String extension) {
-        SimpleDateFormat sdfDate = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
-        Date now = new Date();
-
-        return root + sdfDate.format(now) + extension;
+        return root + result + extension;
     }
 
     public static void main(String args[]) throws InterruptedException {
         final ProgramProperties properties;
 
-        try {
-            initLogging();
-        } catch (RuntimeException ex) {
-            System.out.println("Error setting up log4j logging");
-            System.out.println("Application will continue but without any logging.");
-        }
-
         log.info("PIR Detector started");
 
         properties = ProgramProperties.getInstance("catcam.properties");
 
-        if (Gpio.wiringPiSetup() == -1) {
-            log.error(" ==>> GPIO SETUP FAILED");
-        } else {
-            Joiner joiner = Joiner.on(" ");
-            String videoProperties = joiner.join(properties.getString(VIDEO_SETTINGS),
-                    TIME_SET + properties.getString(TIME_TO_RECORD),
-                    Camera.VIDEO_DEFAULTS);
+        StringJoiner joiner = new StringJoiner(" ");
+        String videoProperties = joiner.add(properties.getString(VIDEO_SETTINGS))
+                .add(TIME_SET + properties.getString(TIME_TO_RECORD))
+                .add(Camera.VIDEO_DEFAULTS).toString();
 
-            joiner = Joiner.on("/");
-            String fileName = joiner.join(properties.getString(STORE_PATH), properties.getString(NAME_STUB));
+        joiner = new StringJoiner("/");
+        String fileName = joiner.add(properties.getString(STORE_PATH))
+                .add(properties.getString(NAME_STUB)).toString();
 
-            String fileExtension = properties.getString(FILE_EXTENSION);
+        String fileExtension = properties.getString(FILE_EXTENSION);
 
-            cutOffSeconds = properties.getInt(DROP_OFF_RATE, DEFAULT_CUT_OFF_SECS);
+        cutOffSeconds = properties.getInt(DROP_OFF_RATE, DEFAULT_CUT_OFF_SECS);
 
-            // create gpio controller
-            final GpioController gpio = GpioFactory.getInstance();
+        // create gpio controller
+        final GpioController gpio = GpioFactory.getInstance();
 
-            // provision GPIO_MOVEMENT_PIN as an input pin with its internal pull down resistor enabled
-            final GpioPinDigitalInput movementDetected = gpio.provisionDigitalInputPin(GPIO_MOVEMENT_PIN, PinPullResistance.PULL_DOWN);
+        // provision GPIO_MOVEMENT_PIN as an input pin with its internal pull down resistor enabled
+        final GpioPinDigitalInput movementDetected = gpio.provisionDigitalInputPin(GPIO_MOVEMENT_PIN, PinPullResistance.PULL_DOWN);
 
-            final CameraProcess videoCamera = Camera.getPausedNamedVideo(getName(fileName, fileExtension), videoProperties);
+        LocalDateTime timeStamp = LocalDateTime.now();
 
-            // create and register gpio pin listener
-            movementDetected.addListener(new GpioPinListenerDigital() {
-                                             @Override
-                                             public void handleGpioPinDigitalStateChangeEvent(GpioPinDigitalStateChangeEvent event) {
-                                                 log.debug("Event fired [" + event.getState().isHigh() + "]");
+        videoCamera = Camera.getPausedNamedVideo(getName(fileName, fileExtension, timeStamp), videoProperties);
 
-                                                 if (event.getState().isHigh()) {
-                                                     // Start capture
-                                                     videoCamera.setActive(true);
-                                                 }
+        // create and register gpio pin listener
+        movementDetected.addListener(new GpioPinListenerDigital() {
+                                         @Override
+                                         public void handleGpioPinDigitalStateChangeEvent(GpioPinDigitalStateChangeEvent event) {
+                                             log.debug("Event fired [" + (event.getState().isHigh() ? "High" : "Low") + "]");
 
+                                             if (event.getState().isHigh()) {
+                                                 // Start capture
+                                                 videoCamera.setActive(true);
                                                  synchronized (syncVar) {
                                                      cutOffCounter = cutOffSeconds;      // Reset to the cut off seconds.
                                                  }
                                              }
                                          }
-            );
+                                     }
+        );
 
-            Runtime.getRuntime().addShutdownHook(new Thread() {
-                                                     @Override
-                                                     public void run() {
-                                                         // stop all GPIO activity/threads by shutting down the GPIO controller
-                                                         // (this method will forcefully shutdown all GPIO monitoring threads and scheduled tasks)
-                                                         gpio.shutdown();
-                                                         log.info("shutdown GPIO.");
-                                                         videoCamera.setActive(false);
-                                                         log.info("disabled camera.");
-                                                         videoCamera.shutdown();
-                                                         log.info("shutdown camera.");
-
-                                                         log.info("Exiting program.");
-                                                     }
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+                                                 @Override
+                                                 public void run() {
+                                                     // stop all GPIO activity/threads by shutting down the GPIO controller
+                                                     // (this method will forcefully shutdown all GPIO monitoring threads and scheduled tasks)
+                                                     gpio.shutdown();
+                                                     log.info("shutdown GPIO.");
+                                                     videoCamera.setActive(false);
+                                                     videoCamera.shutdown();
+                                                     log.info("shutdown camera.");
+                                                     log.info("Exiting program.");
                                                  }
+                                             }
+        );
 
-            );
+        log.info("Ready for capture");
 
-            log.info("Ready for capture");
+        // keep program running until user aborts (CTRL-C or SIGINT)
+        for (; ; ) {
+            Thread.sleep(1000);         // Sleep for a 1 second
 
-            // keep program running until user aborts (CTRL-C or SIGINT)
-            for (; ; )
-
-            {
-                Thread.sleep(1000);         // Sleep for a 1 second
-
-                if (cutOffCounter > 0) {
-                    synchronized (syncVar) {
-                        cutOffCounter--;
-                    }
-                    log.debug("cutOffCounter = " + cutOffCounter);
-                } else {
+            if (cutOffCounter > 0) {
+                synchronized (syncVar) {
+                    cutOffCounter--;
+                }
+                log.debug("cutOffCounter = " + cutOffCounter);
+            } else {
+                if (videoCamera.status() != CameraProcess.Status.Paused) {
                     // Stop capture
                     videoCamera.setActive(false);
+                    // If we have crossed over midnight of the day the video was started then create a new named video.
+                    if(LocalDateTime.now().truncatedTo(DAYS).isAfter(timeStamp.truncatedTo(DAYS))) {
+                        videoCamera.shutdown();
+                        log.info("shutdown camera.");
+                        timeStamp = LocalDateTime.now();
+
+                        videoCamera = Camera.getPausedNamedVideo(getName(fileName, fileExtension, timeStamp), videoProperties);
+                    }
                 }
             }
         }
-
-        log.info("Exiting program.");
+//        log.info("Exiting program.");
     }
 }

@@ -1,0 +1,13 @@
+/.idea
+/.git
+/output
+/project
+/target
+/release
+project/project
+project/target
+node_modules
+typings
+/libraries
+/mysql
+*.iml
