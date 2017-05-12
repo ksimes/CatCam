@@ -16,14 +16,12 @@ import com.pi4j.io.gpio.event.GpioPinListenerDigital;
 import com.stronans.ProgramProperties;
 import com.stronans.camera.Camera;
 import com.stronans.camera.CameraProcess;
-import com.sun.org.apache.xerces.internal.impl.dv.xs.DayDV;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.StringJoiner;
 
 import static java.time.temporal.ChronoUnit.DAYS;

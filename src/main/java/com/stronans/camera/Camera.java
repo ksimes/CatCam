@@ -3,6 +3,7 @@ package com.stronans.camera;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.Optional;
@@ -103,22 +104,28 @@ public class Camera {
         log.debug("Start video paused");
         StringJoiner joiner = new StringJoiner(" ");
 
-        // --signal,   -s      Toggle between record and pause according to SIGUSR1
-        // Sending a USR1 signal to the raspivid process will toggle between recording and paused.
-        // --initial,  -i      Define initial state on startup.
-        // Define whether the camera will start paused or will immediately start recording. Options are 'record' or 'pause'.
-        // Note that if you are using a simple timeout, and initial is set to 'pause', no output will be recorded.
-        String finalSettings = joiner.add(EXTERNAL_VIDEO_TOOL).add("-s -i pause").add(settings).add(FINAL_VIDEO_SETTINGS).add(name).toString();
+        File fileFolder = new File(name);
+        if(fileFolder.mkdirs()) {
+            // --signal,   -s      Toggle between record and pause according to SIGUSR1
+            // Sending a USR1 signal to the raspivid process will toggle between recording and paused.
+            // --initial,  -i      Define initial state on startup.
+            // Define whether the camera will start paused or will immediately start recording. Options are 'record' or 'pause'.
+            // Note that if you are using a simple timeout, and initial is set to 'pause', no output will be recorded.
+            String finalSettings = joiner.add(EXTERNAL_VIDEO_TOOL).add("-s -i pause").add(settings).add(FINAL_VIDEO_SETTINGS).add(name).toString();
 
-        try {
-            log.info("Capture video image with settings [" + finalSettings + "]");
+            try {
+                log.info("Capture video image with settings [" + finalSettings + "]");
 
-            // Note that this process will wait for the process created to complete before continuing.
-            process = Runtime.getRuntime().exec(finalSettings);
+                // Note that this process will wait for the process created to complete before continuing.
+                process = Runtime.getRuntime().exec(finalSettings);
 
-        } catch (Exception e) {
-            log.error("During video capture, Camera settings [" + finalSettings + "]", e);
-            process = null;
+            } catch (Exception e) {
+                log.error("During video capture, Camera settings [" + finalSettings + "]", e);
+                process = null;
+            }
+        }
+        else {
+            throw new IllegalArgumentException("One or more directories cannot be created [" + name + "]");
         }
 
         return new CameraProcess(process);
